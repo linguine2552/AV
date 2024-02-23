@@ -21,10 +21,11 @@
 #
 # Still working in 2024. For a deeper understanding visit Florian Bausch's research on AV quarantine formats - https://github.com/ernw/quarantine-formats
 # As well as this blog post on which quarantined files to target and why inside of 'ProgramData\Microsoft\Windows Defender\Quarantine' - https://blog.khairulazam.net/2023/12/12/extracting-quarantine-files-from-windows-defender/
+# Added a method for extracting the gzip archive output when unsing Live Response API
 #
 
 
-import os, sys, struct, hashlib
+import os, sys, struct, hashlib, gzip
 from binascii import crc32
 
 def mse_ksa():
@@ -80,28 +81,38 @@ def rc4_decrypt(sbox, data):
 
     return out
 
+def extract_gz(gz_file):
+    with gzip.open(gz_file, 'rb') as f_in:
+        contents = f_in.read()
+        f = os.path.splitext(gz_file)[0]
+        with open(f, 'wb') as f_out:
+            f_out.write(contents)
+
+    return f
+
 def mse_unquarantine(f):
     with open(f, "rb") as quarfile:
         data = bytearray(quarfile.read())
 
     fsize = len(data)
-    #if fsize < 12 or data[0] != 0x0B or data[1] != 0xad or data[2] != 0x00:
-    #    return None
+    if fsize < 12 or data[0] != 0x0B or data[1] != 0xad or data[2] != 0x00:
+        return None
     
     sbox = mse_ksa()
     outdata = rc4_decrypt(sbox, data)
     
-    with open(sys.argv[1]+"_decoded_meta.bin", "wb") as f:
+    with open(exFile +"_decoded_meta.bin", "wb") as f:
         f.write(outdata)
-
-    print(sys.argv[1]+"_decoded_meta.bin saved.")
 
     headerlen = 0x28 + struct.unpack("<I", outdata[8:12])[0]
     origlen = struct.unpack("<I", outdata[headerlen-12:headerlen-8])[0]
 
     if origlen + headerlen == fsize:
-        with open(sys.argv[1]+"_decoded.bin", "wb") as f:
+        with open(exFile +"_decoded.bin", "wb") as f:
             f.write(outdata[headerlen:])    
-        print(sys.argv[1]+"_decoded.bin saved.")
+        print(f"{exFile}_decoded.bin")
 
-mse_unquarantine(sys.argv[1])
+
+gz_file = sys.argv[1]
+exFile = extract_gz(gz_file)
+mse_unquarantine(exFile)
